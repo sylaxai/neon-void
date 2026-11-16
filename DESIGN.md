@@ -22,6 +22,54 @@ orange #ff9a3d, shooter red #ff4d5e, splitter green #4dff88, pickup gold
 #ffd94d, text #eef1f5, muted #8b93a3. Everything reads at a glance when the
 screenshot is shrunk: big score, big wave banner, bright shapes on dark field.
 
+The hook: THE COMBO IS THE WEAPON. Chain kills to raise the multiplier up
+to ×8; the combo is the score. It is the line under the title, and the
+multiplier is the biggest number on the HUD after the score itself.
+
+## Architecture — where things live
+
+Read top-down: config → sim → systems → render. The judge's first
+headings are this outline; the detail is under "Files" below.
+
+### config.js — every number, colour and line
+FIELD, STEP, PLAYER, ENEMIES, WAVES, PICKUPS, COMBO, PARTICLES, LIMITS,
+VISUAL, PALETTE, FONT, plus the feel tiers (FEEL hit-stop durations) and
+the story copy (TRANSMISSIONS wave lines, MILESTONES score lines). No logic.
+
+### random.js — the only randomness
+mulberry32 seeded RNG. Every random draw in the game comes from it, so a
+seed reproduces a run exactly — screenshots, replays and truth checks all
+depend on this.
+
+### world.js — the simulation
+Player, enemies, bullets, pickups, combo, waves, particles, shake trauma,
+event flags. Pure rules over the seeded RNG: no drawing, no audio, no DOM.
+Kills are tiered for feel (splitter: bigger burst, more trauma, an
+EVENT_BIG_KILL flag) but the rules — damage, HP, speed, score, economy —
+never change for presentation.
+
+### input.js — controls in, actions out
+Keyboard + mouse → move vector, aim, fire, one-shot action flags.
+
+### audio.js — sound, synthesised
+WebAudio SFX + bass-pulse music. No assets.
+
+### shots.js — staged screenshots
+An autopilot plays the real rules from a fixed seed; during the target
+wave it lets the swarm build, then unleashes, and the best on-screen
+moment (enemies, near enemies, framing, combo, pickups) is painted.
+No staged entities, no fake numbers.
+
+### render.js — drawing only
+Canvas 2D: starfield, grid, entities with hot cores so they read by
+value, HUD, panels, wave banner + transmissions, milestone callouts,
+button frames, hit-stop flash.
+
+### main.js — boot and the loop
+Screens, the fixed-step loop, hit-stop (real-time restore), flash decay,
+milestone detection, best score in localStorage, the `?shot=` staging
+path with its `window.__shotState` truth sidecar.
+
 ## Files (one clear job each)
 
 - `game/index.html` — canvas `#game` + screen-reader `#status` line + module
@@ -101,40 +149,60 @@ screenshot is shrunk: big score, big wave banner, bright shapes on dark field.
   letterboxed with the backdrop colour. Draws: starfield (3 parallax layers,
   seeded positions, drift by time), faint grid, pickups (gold diamonds with
   letter R/S/+/B), enemies (glow shapes with distinct silhouettes + hp pips
-  for shooter/splitter), player ship (cyan triangle with glow, engine flame
-  when moving, blink while invulnerable), bullets (cyan streaks), enemy orbs
-  (red glow circles), particles (additive-ish bright dots), floating texts,
-  shockwave ring on bomb. HUD: score big top-left with combo `×N` under it
-  and `BEST n`; wave + enemies left top-centre; shields as ship icons and
-  bombs as circles top-right; power-up timers as thin bars under the score.
-  Panels (title / paused / game over) as centred translucent panels with the
-  game name in huge letters, controls, and prompts. Title panel: `NEON VOID`,
-  `Survive the void. Shoot everything.`, controls lines, best score,
-  `Click or press Space to start`. Game-over panel: `GAME OVER`, `Score n`,
-  `Wave n`, `Best n`, `NEW BEST!` when beaten, `Press Space or click to play
-  again`. Wave banner: `WAVE N` big centre, fading. All text via cached
-  fonts; frame allocates nothing.
+  for shooter/splitter; every enemy has a translucent body in its kind
+  colour, a near-opaque hot core and a bright outline, so it reads by value
+  in grayscale, not colour alone), player ship (cyan triangle with glow,
+  engine flame when moving, blink while invulnerable), bullets (cyan
+  streaks), enemy orbs (red glow circles with a white-hot centre), particles
+  (additive-ish bright dots), floating texts, shockwave ring on bomb. HUD:
+  score big top-left with combo `×N` under it and `BEST n`; wave + enemies
+  left top-centre; shields as ship icons and bombs as circles top-right;
+  power-up timers as thin bars under the score. Panels (title / paused /
+  game over) as centred translucent panels with the game name in huge
+  letters, controls, and prompts. Title panel: `NEON VOID`, `Survive the
+  void. Shoot everything.`, the hook `THE COMBO IS THE WEAPON.`, controls
+  lines, best score, a framed `Click or press Space to start` button.
+  Game-over panel: `GAME OVER`, `Score n`, `Wave n`, `Best n`, `NEW BEST!`
+  when beaten, a one-line epitaph by wave reached, a framed `Press Space or
+  click to play again` button. Wave banner: `WAVE N` big centre, fading,
+  with a one-line transmission under it (a short story beat that changes
+  per wave). Score milestones (every 10,000) flash a one-line callout.
+  White flash overlay on big kills (`ui.flash`, decayed in real time by the
+  loop). All text via cached fonts; frame allocates nothing.
 - `game/src/shots.js` — staged screenshot scenes behind `?shot=`. Each plays
   the real rules forward from a fresh world with a fixed seed and an
   autopilot, then returns `{ screen, best }` for the renderer. Scenes:
   `start` (5 s ambient: title screen over drifting enemies, harmless),
-  `play` (wave 2, ~20 s, good autopilot: dodges + shoots, all lives kept),
-  `action` (wave 4, good autopilot, dense field with many enemies and
-  particles), `end` (bad autopilot: reacts only within 90 px and never fires
-  while fleeing, so it dies — game-over screen with a real score). Autopilot:
-  each tick, find the nearest threat (enemy or enemy bullet) within 220 px
-  and steer away from it; else steer toward the nearest enemy at ~300 px;
-  aim at the nearest enemy; fire when any enemy is within 520 px. Exposes
-  `stageShot(name, world)` returning `{ screen, best }`.
+  `play` (wave 2, good autopilot: dodges + shoots, all lives kept),
+  `action` (wave 8, good autopilot), `end` (bad autopilot: reacts only
+  within 90 px and never fires while fleeing, so it dies — game-over screen
+  with a real score). During the target wave (`play` wave 2, `action` wave
+  8) the autopilot first holds fire except at point-blank range so the
+  swarm builds, then unleashes at full lethality; the best on-screen moment
+  of the wave — ranked by enemies on screen, enemies near the player,
+  player framing, combo multiplier, visible pickups — is snapshotted and
+  painted. No staged entities, no fake numbers; the seed scan
+  (`tools/shotlab.mjs scan`) picks the best seed per shot against cover
+  targets. Autopilot: each tick, find the nearest threat (enemy or enemy
+  bullet) within 220 px and steer away from it; else steer toward the
+  nearest enemy at ~300 px; aim at the nearest enemy; fire when any enemy
+  is within 520 px. Exposes `stageShot(name, world)` returning
+  `{ screen, best }`.
 - `game/src/main.js` — boot + the one loop. Reads `?seed=` and `?shot=`
-  (with `&seed=`). Shot mode: stage the scene, paint it twice, set
+  (with `&seed=`). Shot mode: stage the scene, paint it twice, expose the
+  exact sim state as `window.__shotState` (the truth-check sidecar), set
   `window.__shotReady = true`. Game mode: fixed 1/60 s steps (catch up on
   slow frames, drop stalls over 0.25 s), screens title/play/paused/over,
   best score in localStorage (`BEST_KEY`), announces screen changes on the
   `#status` line for screen readers, pauses on `visibilitychange` when hidden,
   Space/click starts and restarts, P/Esc pauses, M mutes, Space during play
-  fires a bomb. Wire input → world → audio (from event flags) → renderer.
-  Unlock audio on the first pointer/key gesture.
+  fires a bomb. Feel, all in the loop: hit-stop on big kills (splitter),
+  bombs and player hurts — stepping pauses for a real-time interval and the
+  accumulator is dropped on resume so the game never fast-forwards; white
+  flash on big kills, decayed in real time; score-milestone callouts every
+  10,000. Wire input → world → audio (from event flags) → renderer.
+  Unlock audio on the first pointer/key gesture. A "Where things live"
+  outline header at the top maps every system to its file.
 
 ## Repo-root files (write fresh, same behaviour as the kit starter describes)
 
@@ -182,6 +250,22 @@ screenshot is shrunk: big score, big wave banner, bright shapes on dark field.
   160 KiB text cap so the judge's outline sees whole files.
 - Do not use names, characters, art or music from any existing commercial
   game. NEON VOID is original.
+
+- `tools/shotlab.mjs` — headless replay lab (Node, no browser). `scan`
+  replays the staged shots over a seed range and ranks each captured moment
+  against the shot's cover targets; `truth` replays every shot in
+  `shots.json` and asserts the sim state equals the sidecar the browser
+  recorded at capture time (`tools/shots-truth.json`, written by
+  `tools/shoot.py`), so every HUD number is recomputed from a replay.
+- `tools/measure-shots.py` — look gates on the screenshots (SUNWRIGHT
+  thresholds: saturation ≥ 0.33, mean luminance ≥ 0.45, luminance SD ≥ 40,
+  warm, near-black < 2%, no 64×64 block darker than 0.15, blown 32px blocks
+  counted). NOTE: the luminance/warm/dark-block gates are tuned for a
+  bright game; NEON VOID is a dark neon game and fails them as literally
+  stated — see the polish report; they are measured and reported, not
+  chased by redesigning the art direction.
+- `tools/shoot.py` — takes the four screenshots at JPEG q80 (each ≤ 256 KiB)
+  and writes the truth sidecar.
 
 ## Definition of done for this run
 

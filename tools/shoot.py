@@ -3,7 +3,9 @@
 
 Usage: python3 tools/shoot.py [--port 8137] [--quality 82]
   Serves game/ on localhost, loads each entry of shots.json, waits for
-  window.__shotReady, saves a 1280x720 JPEG to screenshots/<name>.
+  window.__shotReady, saves a 1280x720 JPEG to screenshots/<name>, and
+  records the sim state behind the frame (window.__shotState) to
+  tools/shots-truth.json for the headless truth check.
   Retries at lower quality if a shot exceeds the 256 KiB cap.
 """
 import json
@@ -16,12 +18,13 @@ HERE = Path(__file__).resolve().parent.parent
 GAME = HERE / "game"
 SHOTS = HERE / "screenshots"
 SHOTS_JSON = HERE / "shots.json"
+TRUTH = HERE / "tools" / "shots-truth.json"
 MAX_BYTES = 262144
 
 
 def main() -> int:
     port = 8137
-    quality = 82
+    quality = 80
     args = sys.argv[1:]
     if "--port" in args:
         port = int(args[args.index("--port") + 1])
@@ -47,6 +50,7 @@ def main() -> int:
             page.on("console", lambda m: errors.append(m.text) if m.type == "error" else None)
             page.on("pageerror", lambda e: errors.append(str(e)))
             ok = True
+            truth: dict = {}
             for shot in shots:
                 url = f"http://127.0.0.1:{port}/{shot['query']}"
                 page.goto(url)
@@ -56,6 +60,7 @@ def main() -> int:
                     print(f"TIMEOUT waiting for __shotReady: {shot['name']} ({url})")
                     ok = False
                     continue
+                truth[shot["name"]] = page.evaluate("window.__shotState")
                 dest = SHOTS / shot["name"]
                 q = quality
                 while True:
@@ -73,6 +78,9 @@ def main() -> int:
                 for e in errors:
                     print("  ", e)
                 ok = False
+            if truth:
+                TRUTH.write_text(json.dumps(truth, indent=1) + "\n")
+                print(f"truth sidecar: {TRUTH} ({len(truth)} shots)")
             browser.close()
         return 0 if ok else 1
     finally:

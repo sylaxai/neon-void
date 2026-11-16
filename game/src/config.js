@@ -16,3 +16,33 @@ export const COMBO = { duration:2.5, cap:24, divisor:3, maxMultiplier:8 };
 export const PARTICLES = { count:512, explosion:14, minSpeed:60, maxSpeed:260, thruster:2, textLife:0.8, textSpeed:40, shakeDecay:1.6, shakePixels:12 };
 export const LIMITS = { enemies:1024, bullets:256, orbs:512, pickups:128, texts:128, bulletLife:2, orbLife:8 };
 export const VISUAL = { stars:180, grid:80, bannerTime:2.5, shockwaveTime:0.6 };
+// Feel tiers (presentation only — no rule or tuning number lives here):
+// small kill = shake 0.2 + 14 particles, no hit-stop; splitter (the wave's
+// heavy) = shake 0.45 + 30 particles + 0.05 s hit-stop + white flash;
+// bomb = shake 1 + shockwave + 0.08 s hit-stop; player hurt = shake 1 +
+// 40 particles + 0.06 s hit-stop. Hit-stop pauses stepping for a real-time
+// interval and is restored by the frame clock, never by a scaled timer.
+export const FEEL = { hitStopBig:0.05, hitStopBomb:0.08, hitStopHurt:0.06 };
+// Story that emerges from play — text only, never a mechanic. One
+// transmission under the wave banner (index capped at the last line, so late
+// waves keep the deep-end voice) and one callout each time the score crosses
+// another 10,000 (index capped the same way).
+export const TRANSMISSIONS = [
+ 'FIRST CONTACT — DRONES ON SCAN',
+ 'WEAVERS INBOUND — THEY DON\u2019T FLY STRAIGHT',
+ 'SHOOTERS HOLDING RANGE — CLOSE THE GAP',
+ 'SPLITTER ON SCAN — KILL ONE, MEET TWO',
+ 'SWARM THICKENING — WATCH YOUR SIX',
+ 'SIGNALS MULTIPLYING — NO QUIET SECTOR',
+ 'THE VOID IS SENDING EVERYTHING IT HAS',
+ 'WAVE 8 — THIS IS THE DEEP END, PILOT',
+ 'DEEP WATER NOW — NOTHING LEFT BUT THE FIGHT'
+];
+export const MILESTONES = [
+ '10K — THE VOID NOTICES YOU',
+ '20K — SOMETHING OUT THERE IS COUNTING TOO',
+ '30K — HOLD THE LINE, PILOT',
+ '40K — THE SWARM KNOWS YOUR NAME NOW',
+ '50K — HALF A HUNDRED THOUSAND. KEEP FIRING.',
+ 'THE SCORE KEEPS CLIMBING — THE VOID DOESN\u2019T BLINK'
+];
